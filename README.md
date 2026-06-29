@@ -1,0 +1,266 @@
+# Lab 4 — Dynamic Routing with OSPF (Multi-Area)
+
+> **Course:** CCNA Self-Study | **Tool:** Cisco Packet Tracer | **Protocol:** OSPFv2
+
+---
+
+## Overview
+
+In this lab I configured **OSPFv2** across a three-router topology split into multiple OSPF areas. The goal was to move away from static routing and let the routers automatically discover and share network paths through a dynamic routing protocol.
+
+Each router connects to its own LAN segment and to the others via serial WAN links, forming a chain:
+
+```
+[Area 10]  Router-1 ——— Router-2 ——— Router-3  [Area 20]
+              Se0/1/0   Se0/1/0 Se0/1/1   Se0/1/1
+                         [Area 0]
+```
+
+---
+
+## Topology
+
+![Network Topology](dynamic_routing.png)
+
+| Device   | LAN Interface  | LAN Network      | WAN Interface | WAN IP      |
+|----------|---------------|------------------|---------------|-------------|
+| Router-1 | Gig0/0/0      | 192.168.10.0/24  | Se0/1/0       | 12.0.0.1/8  |
+| Router-2 | Gig0/0/0      | 192.168.20.0/24  | Se0/1/0       | 12.0.0.2/8  |
+|          |               |                  | Se0/1/1       | 23.0.0.1/8  |
+| Router-3 | Gig0/0/0      | 192.168.30.0/24  | Se0/1/1       | 23.0.0.2/8  |
+
+**PCs per segment:** PC0–PC3 (Area 10), PC4–PC7 (Area 0), PC8–PC11 (Area 20)
+
+---
+
+## OSPF Area Design
+
+| Area    | Networks Advertised                        | Routers Involved    |
+|---------|--------------------------------------------|---------------------|
+| Area 10 | 192.168.10.0/24, 12.0.0.0/8               | Router-1            |
+| Area 0  | 192.168.20.0/24, 12.0.0.0/8, 23.0.0.0/8  | Router-2 (backbone) |
+| Area 20 | 192.168.30.0/24, 23.0.0.0/8              | Router-3            |
+
+> Router-2 sits at the center as the **backbone router (Area 0)**, connecting Area 10 and Area 20. This is standard OSPF design — all non-backbone areas must connect through Area 0.
+
+---
+
+## Configuration
+
+### Router-1
+
+```
+Router>en
+Router#config ter
+Router(config)#hostname Router-1
+
+Router-1(config)#interface gig0/0/0
+Router-1(config-if)#no shutdown
+Router-1(config-if)#ip address 192.168.10.1 255.255.255.0
+Router-1(config-if)#exit
+
+Router-1(config)#interface serial0/1/0
+Router-1(config-if)#no shutdown
+Router-1(config-if)#ip address 12.0.0.1 255.0.0.0
+Router-1(config-if)#exit
+
+Router-1(config)#router ospf 100
+Router-1(config-router)#network 192.168.10.0 0.0.0.255 area 10
+Router-1(config-router)#network 12.0.0.0 0.255.255.255 area 10
+Router-1(config-router)#exit
+```
+
+### Router-2
+
+```
+Router>en
+Router#config ter
+Router(config)#hostname Router-2
+
+Router-2(config)#interface gig0/0/0
+Router-2(config-if)#no shutdown
+Router-2(config-if)#ip address 192.168.20.1 255.255.255.0
+Router-2(config-if)#exit
+
+Router-2(config)#interface serial0/1/0
+Router-2(config-if)#no shutdown
+Router-2(config-if)#ip address 12.0.0.2 255.0.0.0
+Router-2(config-if)#exit
+
+Router-2(config)#interface serial0/1/1
+Router-2(config-if)#no shutdown
+Router-2(config-if)#ip address 23.0.0.1 255.0.0.0
+Router-2(config-if)#exit
+
+Router-2(config)#router ospf 100
+Router-2(config-router)#network 192.168.20.0 0.0.0.255 area 0
+Router-2(config-router)#network 12.0.0.0 0.255.255.255 area 10
+Router-2(config-router)#network 23.0.0.0 0.255.255.255 area 20
+Router-2(config-router)#exit
+```
+
+### Router-3
+
+```
+Router>en
+Router#config ter
+Router(config)#hostname Router-3
+
+Router-3(config)#interface gig0/0/0
+Router-3(config-if)#no shutdown
+Router-3(config-if)#ip address 192.168.30.1 255.255.255.0
+Router-3(config-if)#exit
+
+Router-3(config)#interface serial0/1/1
+Router-3(config-if)#no shutdown
+Router-3(config-if)#ip address 23.0.0.2 255.0.0.0
+Router-3(config-if)#exit
+
+Router-3(config)#router ospf 100
+Router-3(config-router)#network 192.168.30.0 0.0.0.255 area 20
+Router-3(config-router)#network 23.0.0.0 0.255.255.255 area 20
+Router-3(config-router)#exit
+```
+
+---
+
+## Verification
+
+### Interface Status
+
+All active interfaces confirmed up/up on every router:
+
+**Router-1** — `show ip interface brief`
+```
+GigabitEthernet0/0/0   192.168.10.1   up   up
+Serial0/1/0            12.0.0.1       up   up
+```
+
+**Router-2** — `show ip interface brief`
+```
+GigabitEthernet0/0/0   192.168.20.1   up   up
+Serial0/1/0            12.0.0.2       up   up
+Serial0/1/1            23.0.0.1       up   up
+```
+
+**Router-3** — `show ip interface brief`
+```
+GigabitEthernet0/0/0   192.168.30.1   up   up
+Serial0/1/1            23.0.0.2       up   up
+```
+
+---
+
+### Routing Tables
+
+**Router-1** — `show ip route`
+
+OSPF learned all remote networks automatically:
+
+```
+C    12.0.0.0/8        directly connected, Serial0/1/0
+O IA 23.0.0.0/8        [110/128] via 12.0.0.2, Serial0/1/0
+C    192.168.10.0/24   directly connected, GigabitEthernet0/0/0
+O IA 192.168.20.0/24   [110/65]  via 12.0.0.2, Serial0/1/0
+O IA 192.168.30.0/24   [110/129] via 12.0.0.2, Serial0/1/0
+```
+
+> **Note:** Routes marked `O IA` are **OSPF Inter-Area** — learned from a different OSPF area via Router-2 (the ABR). The metric `[110/65]` means AD=110 (OSPF default) and cost=65.
+
+**Router-2** — `show ip route`
+```
+C    12.0.0.0/8        directly connected, Serial0/1/0
+C    23.0.0.0/8        directly connected, Serial0/1/1
+O    192.168.10.0/24   [110/65] via 12.0.0.1, Serial0/1/0
+C    192.168.20.0/24   directly connected, GigabitEthernet0/0/0
+O    192.168.30.0/24   [110/65] via 23.0.0.2, Serial0/1/1
+```
+
+**Router-3** — `show ip route`
+```
+O IA 12.0.0.0/8        [110/128] via 23.0.0.1, Serial0/1/1
+C    23.0.0.0/8        directly connected, Serial0/1/1
+O IA 192.168.10.0/24   [110/129] via 23.0.0.1, Serial0/1/1
+O IA 192.168.20.0/24   [110/65]  via 23.0.0.1, Serial0/1/1
+C    192.168.30.0/24   directly connected, GigabitEthernet0/0/0
+```
+
+---
+
+### Ping Tests (End-to-End Connectivity)
+
+**From Area 10 PC → Area 20 PC** (PC0 pinging 192.168.30.4)
+```
+Reply from 192.168.30.4: bytes=32 time=15ms TTL=125  ✓
+Reply from 192.168.30.4: bytes=32 time=9ms  TTL=125  ✓
+Reply from 192.168.30.4: bytes=32 time=12ms TTL=125  ✓
+```
+
+**From Area 10 PC → Area 0 PC** (PC0 pinging 192.168.20.3)
+```
+Reply from 192.168.20.3: bytes=32 time=2ms  TTL=126  ✓
+Reply from 192.168.20.3: bytes=32 time=5ms  TTL=126  ✓
+Reply from 192.168.20.3: bytes=32 time=15ms TTL=126  ✓
+```
+
+**From Area 0 PC → Area 10 PC** (PC4 pinging 192.168.10.2)
+```
+Reply from 192.168.10.2: bytes=32 time=1ms  TTL=126  ✓  (4/4, 0% loss)
+```
+
+**From Area 20 PC → Area 10 and Area 0**
+```
+ping 192.168.10.3  →  3/4 received, avg 10ms  ✓
+ping 192.168.20.4  →  4/4 received, avg 6ms   ✓
+```
+
+> The first packet timing out in some tests is normal — it's the **ARP resolution delay** as the router learns the MAC address of the next-hop. Subsequent packets succeed.
+
+---
+
+## Key Concepts Practiced
+
+| Concept | What I Learned |
+|---|---|
+| **OSPFv2** | Link-state protocol that builds a full map of the network and computes shortest paths using Dijkstra's algorithm |
+| **OSPF Areas** | Dividing the network into areas reduces LSA flooding and routing table size; Area 0 is always the backbone |
+| **ABR (Area Border Router)** | Router-2 connects Area 10 and Area 20 to the backbone (Area 0), redistributing inter-area routes |
+| **Wildcard Masks** | Used in `network` statements — the inverse of a subnet mask (e.g., /24 → 0.0.0.255) |
+| **Administrative Distance** | OSPF uses AD=110 by default — lower than RIP (120) but higher than static (1) |
+| **OSPF Cost** | Based on bandwidth — lower cost = preferred path; serial links have higher cost than gigabit |
+| **`O IA` routes** | Inter-Area OSPF routes learned from a different area through an ABR |
+
+---
+
+## What's Different from Static Routing
+
+In Lab 3 I configured static routes manually on each router. Here, once OSPF was enabled and networks were advertised, **all routers automatically discovered each other's networks** — no manual route entries needed. If a link goes down, OSPF reconverges and finds an alternate path automatically.
+
+---
+
+## Files in This Repository
+
+| File | Description |
+|------|-------------|
+| `lab_4.pkt` | Cisco Packet Tracer simulation file |
+| `dynamic_routing.png` | Network topology diagram |
+| `Router-1_configuration.png` | R1 interface config |
+| `Router-2_configuration.png` | R2 interface config |
+| `Router-3_configuration.png` | R3 interface config |
+| `Router-1_ospf_config.png` | R1 OSPF process config |
+| `Router-2_ospf_config.png` | R2 OSPF process config |
+| `Router-3_ospf_config.png` | R3 OSPF process config |
+| `Router-*_ip_interface_brief.png` | Interface status per router |
+| `Router-*_ip_route.png` | Routing table per router |
+| `Router-*_ping_*.png` | End-to-end ping verification |
+
+---
+
+## Lab Environment
+
+- **Simulator:** Cisco Packet Tracer
+- **Router Model:** ISR 1331
+- **Routing Protocol:** OSPFv2 (Process ID 100)
+- **OSPF Areas:** Area 0 (backbone), Area 10, Area 20
+
+**Tags:** `#CCNA` `#Networking` `#Cisco` `#OSPF` `#PacketTracer` `#DynamicRouting`
