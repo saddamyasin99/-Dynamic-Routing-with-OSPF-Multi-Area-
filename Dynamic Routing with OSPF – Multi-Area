@@ -263,5 +263,8 @@ In Lab 3 I configured static routes manually on each router. Here, once OSPF was
 - **Routing Protocol:** OSPFv2 (Process ID 100)
 - **OSPF Areas:** Area 0 (backbone), Area 10, Area 20
 
+---
+
+*Part of my CCNA self-study lab series. Previous labs covered static routing and floating static routes.*
 
 **Tags:** `#CCNA` `#Networking` `#Cisco` `#OSPF` `#PacketTracer` `#DynamicRouting`
